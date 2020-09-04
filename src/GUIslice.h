@@ -118,13 +118,15 @@ extern GSLC_CB_DEBUG_OUT g_pfDebugOut;
     GSLC_PAGE_USER_BASE     = 0,      ///< Starting Page ID for user assignments
     // Internal usage
     GSLC_PAGE_NONE          = -2999,  ///< No Page ID has been assigned
+    GSLC_PAGE_OVERLAY       = 4000,  ///< No Page ID has been assigned to overlay
   } gslc_tePageId;
 
   /// Define page stack
   typedef enum {
     GSLC_STACK_BASE = 0,               ///< Base page
     GSLC_STACK_CUR,                    ///< Current page
-    GSLC_STACK_OVERLAY,                ///< Overlay page (eg. popups)
+    GSLC_STACK_POPUP,                  ///< Popup page
+    GSLC_STACK_OVERLAY,                ///< Overlay page created within custom elements
 
     GSLC_STACK__MAX                    ///< Defines maximum number of pages in stack
   } gslc_teStackPage;
@@ -775,6 +777,9 @@ typedef struct {
 
 
   // Pages
+  gslc_tsPage*        asOverlayPage;    ///< Ptr to cur overlay page 
+  // NOTE: The following only define user created pages.
+  //       Overlay pages created inside custom elements are not included.
   gslc_tsPage*        asPage;           ///< Array of all pages defined in system
   uint8_t             nPageMax;         ///< Maximum number of pages that can be defined
   uint8_t             nPageCnt;         ///< Current number of pages defined
@@ -1697,7 +1702,7 @@ void gslc_SetPageOverlay(gslc_tsGui* pGui,int16_t nPageId);
 
 ///
 /// Show a popup dialog
-/// - Popup dialogs use the overlay layer in the page stack
+/// - Popup dialogs use the popup layer in the page stack
 ///
 /// \param[in]  pGui:        Pointer to GUI
 /// \param[in]  nPageId:     Page ID to use as the popup dialog
@@ -1717,6 +1722,30 @@ void gslc_PopupShow(gslc_tsGui* pGui, int16_t nPageId, bool bModal);
 /// \return none
 ///
 void gslc_PopupHide(gslc_tsGui* pGui);
+
+
+///
+/// Show a Overlay element
+/// - This use the overlay layer in the page stack
+///
+/// \param[in]  pGui:        Pointer to GUI
+/// \param[in]  pPage:       Pointer tp Page structure most likely stored in Element's XData
+/// \param[in]  bModal:      If true, popup is modal (other layers won't accept touch).
+///                          If false, popup is modeless (other layers still accept touch)
+///
+/// \return none
+///
+void gslc_OverlayShow(gslc_tsGui* pGui, gslc_tsPage* pPage, bool bModal);
+
+
+///
+/// Hides the currently active overlay element
+///
+/// \param[in]  pGui:        Pointer to GUI
+///
+/// \return none
+///
+void gslc_OverlayHide(gslc_tsGui* pGui);
 
 
 ///
@@ -1764,6 +1793,31 @@ bool gslc_PageRedrawGet(gslc_tsGui* pGui);
 /// \return none
 ///
 void gslc_PageAdd(gslc_tsGui* pGui,int16_t nPageId,gslc_tsElem* psElem,uint16_t nMaxElem,
+        gslc_tsElemRef* psElemRef,uint16_t nMaxElemRef);
+
+/// Add a overlay to the GUI
+/// - This call associates an element array with the collection within the overlay
+/// - Once a overlay has been added to the GUI, elements can be added
+///   by specifying the same page ID
+///
+/// \param[in]  pGui:         Pointer to GUI
+/// \param[in]  pPage:        Pointer tp Page structure most likely stored in Element's XData
+/// \param[in]  psElem:       Internal element array storage to associate with the page
+/// \param[in]  nMaxElem:     Maximum number of elements that can be added to the
+///                           internal element array (ie. RAM))
+/// \param[in]  psElemRef:    Internal element reference array storage to
+///                           associate with the page. All elements, whether they
+///                           are located in the internal element array or in
+///                           external Flash (PROGMEM) storage, require an entry
+///                           in the element reference array.
+/// \param[in]  nMaxElemRef:  Maximum number of elements in the reference array.
+///                           This is effectively the maximum number of elements
+///                           that can appear on a page, irrespective of whether
+///                           it is stored in RAM or Flash (PROGMEM).
+///
+/// \return none
+///
+void gslc_OverlayAdd(gslc_tsGui* pGui,gslc_tsPage* pPage,gslc_tsElem* psElem,uint16_t nMaxElem,
         gslc_tsElemRef* psElemRef,uint16_t nMaxElemRef);
 
 /// Find an element in the GUI by its Page ID and Element ID

@@ -164,6 +164,7 @@ bool gslc_Init(gslc_tsGui* pGui,void* pvDriver,gslc_tsPage* asPage,uint8_t nMaxP
   pGui->nPageMax        = nMaxPage;
   pGui->nPageCnt        = 0;
   pGui->asPage          = asPage;
+  pGui->asOverlayPage   = NULL;
 
   for (nInd = 0; nInd < GSLC_STACK__MAX; nInd++) {
     pGui->apPageStack[nInd] = NULL;
@@ -1983,6 +1984,24 @@ void gslc_PageAdd(gslc_tsGui* pGui,int16_t nPageId,gslc_tsElem* psElem,uint16_t 
 
 }
 
+void gslc_OverlayAdd(gslc_tsGui* pGui,gslc_tsPage* pPage,gslc_tsElem* psElem,uint16_t nMaxElem,
+        gslc_tsElemRef* psElemRef,uint16_t nMaxElemRef)
+{
+  pGui->asOverlayPage = pPage;
+
+  //pPage->pfuncXEvent      = NULL; // UNUSED
+
+  // Initialize pPage->sCollect
+  gslc_CollectReset(&pPage->sCollect,psElem,nMaxElem,psElemRef,nMaxElemRef);
+
+  // Assign the requested Page ID
+  pPage->nPageId = GSLC_PAGE_OVERLAY;
+
+  // Initialize the page elements bounds to empty
+  pPage->rBounds = (gslc_tsRect) { 0, 0, 0, 0 };
+
+}
+
 int gslc_GetPageCur(gslc_tsGui* pGui)
 {
   gslc_tsPage* pStackPage = pGui->apPageStack[GSLC_STACK_CUR];
@@ -2075,7 +2094,7 @@ void gslc_SetPageOverlay(gslc_tsGui* pGui,int16_t nPageId)
 
 void gslc_PopupShow(gslc_tsGui* pGui, int16_t nPageId, bool bModal)
 {
-  gslc_SetStackPage(pGui, GSLC_STACK_OVERLAY, nPageId);
+  gslc_SetStackPage(pGui, GSLC_STACK_POPUP, nPageId);
   // If modal dialog selected, then deactivate other pages in stack
   // If modeless dialog selected, then don't deactivate other pages in stack
   if (bModal) {
@@ -2095,13 +2114,47 @@ void gslc_PopupShow(gslc_tsGui* pGui, int16_t nPageId, bool bModal)
 
 void gslc_PopupHide(gslc_tsGui* pGui)
 {
-  gslc_SetStackPage(pGui, GSLC_STACK_OVERLAY, GSLC_PAGE_NONE);
+  gslc_SetStackPage(pGui, GSLC_STACK_POPUP, GSLC_PAGE_NONE);
   // Ensure other pages in stack are activated
   // - This is done in case they were deactivated due to a modal popup
   gslc_SetStackState(pGui, GSLC_STACK_CUR, true, true);
   gslc_SetStackState(pGui, GSLC_STACK_BASE, true, true);
 }
 
+void gslc_OverlayShow(gslc_tsGui* pGui, gslc_tsPage* pPage, bool bModal)
+{
+  pGui->asOverlayPage = pPage;
+
+  gslc_SetStackPage(pGui, GSLC_STACK_OVERLAY, GSLC_PAGE_OVERLAY);
+  // If modal dialog selected, then deactivate other pages in stack
+  // If modeless dialog selected, then don't deactivate other pages in stack
+  if (bModal) {
+    // Modal: deactive other pages and disable redraw
+    gslc_SetStackState(pGui, GSLC_STACK_POPUP, false, false);
+    gslc_SetStackState(pGui, GSLC_STACK_CUR, false, false);
+    gslc_SetStackState(pGui, GSLC_STACK_BASE, false, false);
+  }
+  else {
+    // Modeless: activate other pages and enable background redraw
+    // NOTE: If a popup overlaps controls that continue to be updated
+    //       in the background, then extra redraws will occur. In that
+    //       case, it may be preferrable to set redraw to false.
+    gslc_SetStackState(pGui, GSLC_STACK_POPUP, true, true);
+    gslc_SetStackState(pGui, GSLC_STACK_CUR, true, true);
+    gslc_SetStackState(pGui, GSLC_STACK_BASE, true, true);
+  }
+}
+
+void gslc_OverlayHide(gslc_tsGui* pGui)
+{
+  pGui->asOverlayPage = NULL;
+  gslc_SetStackPage(pGui, GSLC_STACK_OVERLAY, GSLC_PAGE_NONE);
+  // Ensure other pages in stack are activated
+  // - This is done in case they were deactivated due to a modal popup
+  gslc_SetStackState(pGui, GSLC_STACK_POPUP, true, true);
+  gslc_SetStackState(pGui, GSLC_STACK_CUR, true, true);
+  gslc_SetStackState(pGui, GSLC_STACK_BASE, true, true);
+}
 
 // Adjust the flag that indicates whether the entire page
 // requires a redraw.
@@ -2367,6 +2420,13 @@ gslc_tsPage* gslc_PageFindById(gslc_tsGui* pGui,int16_t nPageId)
   // as it shows a serious config error and continued operation
   // is not viable.
   if (pFoundPage == NULL) {
+    // Is this an Overlay Page?
+    if (nPageId == GSLC_PAGE_OVERLAY && pGui->asOverlayPage != NULL) {
+      return pGui->asOverlayPage;
+    }    
+    // Error handling: if not found, make this a fatal error
+    // as it shows a serious config error and continued operation
+    // is not viable.
     GSLC_DEBUG2_PRINT("ERROR: PageFindById() can't find page (ID=%d)\n",nPageId);
     return NULL;
   }
