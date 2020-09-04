@@ -13,7 +13,7 @@
 //
 // The MIT License
 //
-// Copyright 2016-2020 Calvin Hass
+// Copyright 2016-2019 Calvin Hass
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -41,8 +41,6 @@ extern "C" {
 #endif // __cplusplus
 
 
-
-#if (GSLC_FEATURE_COMPOUND)
 // ============================================================================
 // Extended Element: KeyPad (Number Selector)
 // - Demonstration of a compound element consisting of
@@ -65,29 +63,31 @@ extern "C" {
 // Define global list of button ID types
 // - A given keypad may not use all of these
 enum {
-  // --------------------------------------------
   // --- Special Buttons
   KEYPAD_ID_BACKSPACE,
-  KEYPAD_ID_PERIOD,
   KEYPAD_ID_SPACE,
   KEYPAD_ID_DECIMAL,
   KEYPAD_ID_MINUS,
   KEYPAD_ID_ESC,
   KEYPAD_ID_ENTER,
+  KEYPAD_ID_SWAP_PAD,
   // --- Basic Buttons
   KEYPAD_ID_BASIC_START=100,
-  // --------------------------------------------
-  // --- Extra elements
-  KEYPAD_ID_TXT=200,        // Value string text area
+  // --- Text field
+  KEYPAD_ID_TXT = 200
 };
-
-/// Function for KeyPad creation
-typedef int16_t (*XKEYPAD_LOOKUP)(gslc_tsGui* pGui, int16_t nKeyId);
-
 
 // Extended element data structures
 // - These data structures are maintained in the gslc_tsElem
 //   structure via the pXData pointer
+
+  /// Key information. Defines everything we need to know about a particular key.
+  typedef struct gslc_tsKey {
+    uint8_t             nId;       ///< identifier
+    uint8_t             nRow;      ///< row to place key
+    uint8_t             nCol;      ///< column to place key
+    uint8_t             nColSpan;  ///< number of columns key takes up
+  } gslc_tsKey;
 
   /// Configuration for the KeyPad
   typedef struct {
@@ -96,13 +96,19 @@ typedef int16_t (*XKEYPAD_LOOKUP)(gslc_tsGui* pGui, int16_t nKeyId);
 	  bool                bRoundEn;         ///< Enable rounded corners
     int8_t              nButtonSzW;       ///< Button width (in pixels)
     int8_t              nButtonSzH;       ///< Button height (in pixels)
-    char**              pacKeys;          ///< Array of character strings for KeyPad labels
-
+    char**              pActiveLabels;    ///< Active set of KeyPad labels
+    char**              pLabels1;         ///< KeyPad labels set 1 to use when doing swap
+    char**              pLabels2;         ///< KeyPad labels set 2 to use when doing swap
+    gslc_tsKey*         pKeyPos;          ///< Array of Key Positions on keypad
+    
     // From constructor
     int16_t             nFontId;          ///< Configured font for KeyPad labels
     int16_t             nOffsetX;         ///< Configured offset (X direction) for buttons from parent container
     int16_t             nOffsetY;         ///< Configured offset (Y direction) for buttons from parent container
 
+    uint8_t             nSpecialKeys;     ///< Number of Special Keys
+    uint8_t             nBasicKeys;       ///< Number of Basic Keys
+    uint8_t             nMaxKeys;         ///< Maximum Number of Keys
     int8_t              nFrameMargin;     ///< Margin around text value field
     uint8_t             nMaxCols;         ///< Maximum number of columns to occupy
     uint8_t             nMaxRows;         ///< Maximum number of rows to occupy
@@ -127,28 +133,23 @@ typedef int16_t (*XKEYPAD_LOOKUP)(gslc_tsGui* pGui, int16_t nKeyId);
     bool                bValDecimalPt;    ///< Value string includes decimal point
 
     // Config
-    char**              pacKeys;          ///< Array of character strings for KeyPad labels
     gslc_tsXKeyPadCfg   sConfig;          ///< Configuration options
 
     GSLC_CB_INPUT       pfuncCb;          ///< Callback function for KeyPad actions
-    XKEYPAD_LOOKUP      pfuncLookup;      ///< Callback function for converting key into key label
     int16_t             nTargetId;        ///< Target element ID associated with keypad (GSLC_CB_INPUT)
-
-    // Internal sub-element members
-    gslc_tsCollect      sCollect;         ///< Collection management for sub-elements
-    uint8_t             nSubElemMax;      ///< Maximum number of sub-elements to create within KeyPad container
-    gslc_tsElemRef*     psElemRef;        ///< Ptr to storage for sub-element references
-    gslc_tsElem*        psElem;           ///< Ptr to storage for sub-elements
-
+    
+    // text field data - used for faster redraws
+    int16_t             nTxtX;            ///< Text Field's X coordinate
+    int16_t             nTxtY;            ///< Text Field's X coordinate
+    int16_t             nTxtW;            ///< Text Field's Width
+    int16_t             nTxtH;            ///< Text Field's Height
+    gslc_tsColor        cTxtFrame;        ///< Text Field's frame color
+    gslc_tsColor        cTxtFill;         ///< Text Field's fill color
+    gslc_tsColor        cTxtText;         ///< Text Field's text color
   } gslc_tsXKeyPad;
 
-
-// Callback function for KeyPad creation
-typedef void (*XKEYPAD_CREATE)(gslc_tsGui* pGui,gslc_tsXKeyPad* pXData);
-
-
   ///
-  /// Add a key to the KeyPad control
+  /// Draw a key to the screen
   ///
   /// \param[in]  pGui:        Pointer to GUI
   /// \param[in]  pXData:      Ptr to extended element data structure
@@ -158,34 +159,33 @@ typedef void (*XKEYPAD_CREATE)(gslc_tsGui* pGui,gslc_tsXKeyPad* pXData);
   /// \param[in]  nCol:        Element placement position (column index, 0 at left)
   /// \param[in]  nRowSpan:    Number of columns to occupy by element (1 for normal size, 2 for double width)
   /// \param[in]  nColSpan:    Number of rows to occupy by element (1 for normal size, 2 for double height)
+  /// \param[in]  cColFrame:   Frame color for element
   /// \param[in]  cColFill:    Fill color for element
-  /// \param[in]  cColGlow:    Fill color for element when glowing
+  /// \param[in]  cColText:    Text color for element
   /// \param[in]  bVisible:    Initial key visibility state
   ///
   /// \return none
   ///
-void XKeyPadAddKeyElem(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId, bool bTxtField, int16_t nRow, int16_t nCol,
-  int8_t nRowSpan, int8_t nColSpan, gslc_tsColor cColFill, gslc_tsColor cColGlow, bool bVisible);
+  void gslc_XKeyPadDrawKey(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId, bool bTxtField, 
+    int16_t nRow, int16_t nCol, int8_t nRowSpan, int8_t nColSpan,
+    gslc_tsColor cColFrame, gslc_tsColor cColFill, gslc_tsColor cColText, bool bVisible);
 
   ///
   /// Create a KeyPad Element
   ///
-  /// \param[in]  pGui:        Pointer to GUI
-  /// \param[in]  nElemId:     Element ID to assign (0..16383 or GSLC_ID_AUTO to autogen)
-  /// \param[in]  nPage:       Page ID to attach element to
-  /// \param[in]  pXData:      Ptr to extended element data structure
-  /// \param[in]  nX0:         X KeyPad Starting Coordinate 
-  /// \param[in]  nY0:         Y KeyPad Starting Coordinate 
-  /// \param[in]  nFontId:     Font ID to use for drawing the element
-  /// \param[in]  pConfig:     Ptr to Config options
-  /// \param[in]  pfuncCreate: Ptr to callback function for creation
-  /// \param[in]  pfuncLookup: Ptr to callback function for button lookups
+  /// \param[in]  pGui:          Pointer to GUI
+  /// \param[in]  nElemId:       Element ID to assign (0..16383 or GSLC_ID_AUTO to autogen)
+  /// \param[in]  nPage:         Page ID to attach element to
+  /// \param[in]  pXData:        Ptr to extended element data structure
+  /// \param[in]  nX0:           X KeyPad Starting Coordinate 
+  /// \param[in]  nY0:           Y KeyPad Starting Coordinate 
+  /// \param[in]  nFontId:       Font ID to use for drawing the element
+  /// \param[in]  sConfig:       Config options
   ///
   /// \return Pointer to Element or NULL if failure
   ///
-  gslc_tsElemRef* gslc_ElemXKeyPadCreateBase(gslc_tsGui* pGui, int16_t nElemId, int16_t nPage,
-    gslc_tsXKeyPad* pXData, int16_t nX0, int16_t nY0, int8_t nFontId, gslc_tsXKeyPadCfg* pConfig,
-    XKEYPAD_CREATE pfuncCreate, XKEYPAD_LOOKUP pfuncLookup);
+  gslc_tsElemRef* gslc_XKeyPadCreateBase(gslc_tsGui* pGui, int16_t nElemId, int16_t nPage,
+    gslc_tsXKeyPad* pXData, int16_t nX0, int16_t nY0, int8_t nFontId, gslc_tsXKeyPadCfg* pConfig);
 
 
   ///
@@ -209,7 +209,7 @@ void XKeyPadAddKeyElem(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId,
   ///
   /// \param[in]  pGui:       Pointer to GUI
   /// \param[in]  pElemRef:   Ptr to KeyPad Element reference
-  /// \param[in]  nId:        Element enum ID for target of KeyPad value
+  /// \param[in]  nTargetId:  Element enum ID for target of KeyPad value
   ///
   /// \return none
   ///
@@ -217,14 +217,14 @@ void XKeyPadAddKeyElem(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId,
 
 
   ///
-  /// Set the current output string buffer associated with NumericInput element
+  /// Fetch the current output string associated with NumericInput element
   ///
   /// \param[in]  pGui:        Pointer to GUI
   /// \param[in]  pElemRef:    Ptr to KeyPad Element reference
-  /// \param[in]  pStrBuf:     String to copy into element
+  /// \param[in]  pStrBuf:     String buffer 
   /// \param[in]  nStrBufMax:  Maximum length of string buffer (pStrBuf)
   ///
-  /// \return none
+  /// \return true if success, false otherwise
   ///
   bool gslc_ElemXKeyPadValGet(gslc_tsGui* pGui, gslc_tsElemRef* pElemRef, char* pStrBuf, uint8_t nStrBufMax);
 
@@ -254,40 +254,26 @@ void XKeyPadAddKeyElem(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId,
   /// - Called during redraw
   ///
   /// \param[in]  pvGui:       Void ptr to GUI (typecast to gslc_tsGui*)
-  /// \param[in]  pvElemRef:   Void ptr to Element reference (typecast to gslc_tsElemRef*)
+  /// \param[in]  pvElem:      Void ptr to Element (typecast to gslc_tsElem*)
   /// \param[in]  eRedraw:     Redraw mode
   ///
   /// \return true if success, false otherwise
   ///
-  bool gslc_ElemXKeyPadDraw(void* pvGui, void* pvElemRef, gslc_teRedrawType eRedraw);
-
-  ///
-  /// Handle a click event within the KeyPad
-  /// - This is called internally by the KeyPad touch handler
-  ///
-  /// \param[in]  pvGui:       Void ptr to GUI (typecast to gslc_tsGui*)
-  /// \param[in]  pvElemRef:   Void ptr to Element Ref (typecast to gslc_tsElemRef*)
-  /// \param[in]  eTouch:      Touch event type
-  /// \param[in]  nX:          Touch X coord
-  /// \param[in]  nY:          Touch Y coord
-  ///
-  /// \return none
-  ///
-  bool gslc_ElemXKeyPadClick(void* pvGui, void *pvElemRef, gslc_teTouch eTouch, int16_t nX, int16_t nY);
+  bool gslc_XKeyPadDraw(void* pvGui, void* pvElemRef, gslc_teRedrawType eRedraw);
 
   ///
   /// Handle touch (up,down,move) events to KeyPad element
   /// - Called from gslc_ElemSendEventTouch()
   ///
   /// \param[in]  pvGui:       Void ptr to GUI (typecast to gslc_tsGui*)
-  /// \param[in]  pvElemRef:   Void ptr to Element ref (typecast to gslc_tsElemRef*)
+  /// \param[in]  pvElem:      Void ptr to Element (typecast to gslc_tsElem*)
   /// \param[in]  eTouch:      Touch event type
   /// \param[in]  nRelX:       Touch X coord relative to element
   /// \param[in]  nRelY:       Touch Y coord relative to element
   ///
   /// \return true if success, false otherwise
   ///
-  bool gslc_ElemXKeyPadTouch(void* pvGui, void* pvElemRef, gslc_teTouch eTouch, int16_t nRelX, int16_t nRelY);
+  bool gslc_XKeyPadTouch(void* pvGui, void* pvElemRef, gslc_teTouch eTouch, int16_t nRelX, int16_t nRelY);
 
   ///
   /// Set the callback function associated with the KeyPad
@@ -305,6 +291,7 @@ void XKeyPadAddKeyElem(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId,
   /// Update the KeyPad configuration to enable floating point numbers
   /// - Effectively disables/enables the decimal point button & handling
   ///
+  /// \param[in]  pGui:        Pointer to GUI
   /// \param[in]  pConfig:     Pointer to the XKeyPad config structure
   /// \param[in]  bEn:         Enable flag (true if floating point enabled)
   ///
@@ -316,6 +303,7 @@ void XKeyPadAddKeyElem(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId,
   /// Update the KeyPad configuration to enable negative numbers
   /// - Effectively disables/enables the sign button & handling
   ///
+  /// \param[in]  pGui:        Pointer to GUI
   /// \param[in]  pConfig:     Pointer to the XKeyPad config structure
   /// \param[in]  bEn:         Enable flag (true if negative numbers enabled)
   ///
@@ -326,6 +314,7 @@ void XKeyPadAddKeyElem(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId,
   ///
   /// Update the KeyPad configuration to enable rounded button corners
   ///
+  /// \param[in]  pGui:        Pointer to GUI
   /// \param[in]  pConfig:     Pointer to the XKeyPad config structure
   /// \param[in]  bEn:         Enable rounded corners
   ///
@@ -336,6 +325,7 @@ void XKeyPadAddKeyElem(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId,
   ///
   /// Update the KeyPad configuration to define the KeyPad button sizing
   ///
+  /// \param[in]  pGui:        Pointer to GUI
   /// \param[in]  pConfig:     Pointer to the XKeyPad config structure
   /// \param[in]  nButtonSzW:  Width of buttons in pixels
   /// \param[in]  nButtonSzH:  Width of buttons in pixels
@@ -343,6 +333,26 @@ void XKeyPadAddKeyElem(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId,
   /// \return none
   ///
   void gslc_ElemXKeyPadCfgSetButtonSz(gslc_tsXKeyPadCfg* pConfig, int8_t nButtonSzW, int8_t nButtonSzH);
+
+  ///
+  /// Define the KeyPad special button's colors
+  ///
+  /// NOTE: You can use gslc_ElemSetTxtCol() to change text color
+  ///       and gslc_ElemSetCol() for background and frame colors.
+  ///
+  /// \param[in]  pGui:        Pointer to GUI
+  /// \param[in]  pConfig:     Pointer to the XKeyPad config structure
+  /// \param[in]  cColBasic:   Fill color for basic keys
+  /// \param[in]  cColBacksp:  Fill color for backspace key
+  /// \param[in]  cColSpace:   Fill color for space key
+  /// \param[in]  cColDecimal: Fill color for decimal point on numeric keypad
+  /// \param[in]  cColMinus:   Fill color for minus sign on  numeric keypad
+  /// \param[in]  cColEsc:     Fill color for escape key
+  /// \param[in]  cColEnt:     Fill color for enter key
+  /// \param[in]  cColSwap:    Fill color for swap keypad the "123" and "ABC" keys
+  void gslc_ElemXKeyPadCfgSetButtonColors(gslc_tsXKeyPadCfg* pConfig, gslc_tsColor cColBasic, gslc_tsColor cColBacksp, 
+    gslc_tsColor cColSpace,gslc_tsColor cColDecimal,gslc_tsColor cColMinus,gslc_tsColor cColEsc, 
+    gslc_tsColor cColEnt, gslc_tsColor cColSwap);
 
   ///
   /// Update the KeyPad active configuration to enable negative numbers
@@ -368,6 +378,55 @@ void XKeyPadAddKeyElem(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId,
   ///
   void gslc_ElemXKeyPadSetSignEn(gslc_tsGui* pGui, gslc_tsElemRef* pElemRef, bool bEn);
 
+  /// Draw a virtual Text Element
+  /// - Creates a text string with filled background
+  ///
+  /// \param[in]  pGui:        Pointer to GUI
+  /// \param[in]  rElem:       Rectangle coordinates defining text background size
+  /// \param[in]  pStrBuf:     String to copy into element
+  /// \param[in]  nStrBufMax:  Maximum length of string buffer (pStrBuf). Only applicable
+  ///                          if GSLC_LOCAL_STR=0. Ignored if GSLC_LOCAL_STR=1.)
+  /// \param[in]  nFontId:     Font ID to use for text display
+  /// \param[in]  cColFrame:   Frame color for element
+  /// \param[in]  cColFill:    Fill color for element
+  /// \param[in]  cColText:    Text color for element
+  ///
+  /// \return none
+  ///
+  void gslc_XKeypadDrawVirtualTxt(gslc_tsGui* pGui,gslc_tsRect rElem,
+    char* pStrBuf,uint8_t nStrBufMax,int16_t nFontId, gslc_tsColor cColFrame,
+    gslc_tsColor cColFill, gslc_tsColor cColText);
+
+  ///
+  /// Draw a virtual textual Button Element
+  ///
+  /// \param[in]  pGui:        Pointer to GUI
+  /// \param[in]  rElem:       Rectangle coordinates defining text background size
+  /// \param[in]  pStrBuf:     String to copy into element
+  /// \param[in]  nStrBufMax:  Maximum length of string buffer (pStrBuf). 
+  /// \param[in]  nFontId:     Font ID to use for text display
+  /// \param[in]  cColFrame:   Frame color for element
+  /// \param[in]  cColFill:    Fill color for element
+  /// \param[in]  cColText:    Text color for element
+  /// \param[in]  bRoundedEn:  Use Rounded Corners?
+  ///
+  /// \return none
+  ///
+  void gslc_XKeyPadDrawVirtualBtn(gslc_tsGui* pGui, gslc_tsRect rElem,
+    char* pStrBuf,uint8_t nStrBufMax,int16_t nFontId, gslc_tsColor cColFrame,
+    gslc_tsColor cColFill, gslc_tsColor cColText, bool bRoundedEn);
+
+  /// Draw a virtual element to the active display
+  /// - Element is referenced by an element pointer
+  ///
+  /// \param[in]  pGui:        Pointer to GUI
+  /// \param[in]  pElem:       Ptr to Element to draw
+  /// \param[in]  eRedraw:     Redraw mode
+  ///
+  /// \return true if success, false otherwise
+  ///
+  bool gslc_XKeyPadDrawVirtualElem(gslc_tsGui* pGui,gslc_tsElem* pElem);
+
   ///
   /// Trigger a KeyPad popup and associate it with a text element
   ///
@@ -390,9 +449,6 @@ void XKeyPadAddKeyElem(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData, int16_t nKeyId,
   /// \return The text string that was fetched from the KeyPad
   ///
   char* gslc_ElemXKeyPadInputGet(gslc_tsGui* pGui, gslc_tsElemRef* pTxtRef, void* pvCbData);
-
-
-  #endif // GSLC_FEATURE_COMPOUND
 
 // ============================================================================
 

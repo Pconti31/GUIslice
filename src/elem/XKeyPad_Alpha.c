@@ -1,5 +1,5 @@
 // =======================================================================
-// GUIslice library extension: XKeyPad control (Alpha entry)
+// GUIslice library extension: XKeyPad control (Numeric entry)
 // - Paul Conti, Calvin Hass
 // - https://www.impulseadventure.com/elec/guislice-gui.html
 // - https://github.com/ImpulseAdventure/GUIslice
@@ -7,7 +7,7 @@
 //
 // The MIT License
 //
-// Copyright 2016-2020 Calvin Hass
+// Copyright 2016-2019 Calvin Hass
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -28,7 +28,7 @@
 // THE SOFTWARE.
 //
 // =======================================================================
-/// \file XKeyPad.c
+/// \file XKeyPad_alpha.c
 
 
 
@@ -42,14 +42,8 @@
 #include <stdio.h>
 
 #if (GSLC_USE_PROGMEM)
-  #if defined(__AVR__)
     #include <avr/pgmspace.h>
-  #else
-    #include <pgmspace.h>
-  #endif
 #endif
-
-#if (GSLC_FEATURE_COMPOUND)
 
 // ----------------------------------------------------------------------------
 // Error Messages
@@ -71,7 +65,9 @@ extern const char GSLC_PMEM ERRSTR_PXD_NULL[];
 
 // ============================================================================
 // Extended Element: KeyPad
-// - Keypad element with alpha input
+// - Keypad element with numeric input
+// - Optionally supports floating point values
+// - Optionally supports negative values
 // ============================================================================
 
 // Define the button labels
@@ -82,97 +78,89 @@ extern const char GSLC_PMEM ERRSTR_PXD_NULL[];
 //   are not currently using "const char" since we may
 //   want to support user-modification of the labels.
 
-static char* KEYPAD_LABEL_STRINGS[] = {
+static char* KEYPAD_ALPHA_LABEL[] = {
   // Special buttons
-  "<", ".", " ", "ESC", "ENT",
+  "<", " ", "ESC", "ENT","123",
   // Basic buttons
-  "A", "B", "C", "D", "E", "F", "G", "H" ,"I", "J",
-  "K", "L", "M", "N", "O", "P", "Q", "R" ,"S", "T",
-  "U", "V", "W", "X", "Y", "Z",
+  "Q", "W", "E", "R", "T", "Y", "U", "I" ,"O" ,"P",
+  "A", "S", "D", "F", "G", "H", "J", "K", "L",
+  "Z", "X", "C", "V", "B", "N", "M",
 };
 
-// Define enums for KEYPAD_LABEL_STRINGS
-enum {
-  // - Special buttons
-  KEYPAD_LBL_BACKSPACE,
-  KEYPAD_LBL_PERIOD,
-  KEYPAD_LBL_SPACE,
-  KEYPAD_LBL_ESC,
-  KEYPAD_LBL_ENTER,
-  // - Basic buttons
-  KEYPAD_LBL_BASIC_START
+static char* KEYPAD_NUM_LABEL[] = {
+  // Special buttons
+  "<", " ", "ESC", "ENT","ABC",
+  // Basic buttons
+  "0", "1", "2", "3", "4", "5", "6", "7" ,"8" ,"9",
+  "+", "-", "=", "%", "'", "&", "(", ")", ".",
+  "@", "#", "$", "/", "!", "?", ",",
 };
 
+static gslc_tsKey KEYPAD_KEY_POS[] = {
+  { KEYPAD_ID_TXT,           0, 2, 6 }, 
+  // Special buttons
+  { KEYPAD_ID_BACKSPACE,     2, 9, 1 }, 
+  { KEYPAD_ID_SPACE,         3, 9, 1 }, 
+  { KEYPAD_ID_ESC,           0, 0, 2 }, 
+  { KEYPAD_ID_ENTER,         0, 8, 2 }, 
+  { KEYPAD_ID_SWAP_PAD,      3, 0, 2 }, 
+  // Basic buttons
+  { KEYPAD_ID_BASIC_START,   1, 0, 1 },  // "Q" - "0"
+  { KEYPAD_ID_BASIC_START+1 ,1, 1, 1 },  // "W" - "1"
+  { KEYPAD_ID_BASIC_START+2 ,1, 2, 1 },  // "E" - "2"
+  { KEYPAD_ID_BASIC_START+3 ,1, 3, 1 },  // "R" - "3"
+  { KEYPAD_ID_BASIC_START+4 ,1, 4, 1 },  // "T" - "4"
+  { KEYPAD_ID_BASIC_START+5 ,1, 5, 1 },  // "Y" - "5"
+  { KEYPAD_ID_BASIC_START+6 ,1, 6, 1 },  // "U" - "6"
+  { KEYPAD_ID_BASIC_START+7 ,1, 7, 1 },  // "I" - "7"
+  { KEYPAD_ID_BASIC_START+8 ,1, 8, 1 },  // "O" - "8"
+  { KEYPAD_ID_BASIC_START+9 ,1, 9, 1 },  // "P" - "9"
+  { KEYPAD_ID_BASIC_START+10,2, 0, 1 },  // "A" - "+"
+  { KEYPAD_ID_BASIC_START+11,2, 1, 1 },  // "S" - "-"
+  { KEYPAD_ID_BASIC_START+12,2, 2, 1 },  // "D" - "=" 
+  { KEYPAD_ID_BASIC_START+13,2, 3, 1 },  // "F" - "%"
+  { KEYPAD_ID_BASIC_START+14,2, 4, 1 },  // "G" - "'"
+  { KEYPAD_ID_BASIC_START+15,2, 5, 1 },  // "H" - "&'
+  { KEYPAD_ID_BASIC_START+16,2, 6, 1 },  // "J" - "("
+  { KEYPAD_ID_BASIC_START+17,2, 7, 1 },  // "K" - ")"
+  { KEYPAD_ID_BASIC_START+18,2, 8, 1 },  // "L" - "."
+  { KEYPAD_ID_BASIC_START+19,3, 2, 1 },  // "Z" - "@"
+  { KEYPAD_ID_BASIC_START+20,3, 3, 1 },  // "X" - "#"
+  { KEYPAD_ID_BASIC_START+21,3, 4, 1 },  // "C" - "$"
+  { KEYPAD_ID_BASIC_START+22,3, 5, 1 },  // "V" - "/"
+  { KEYPAD_ID_BASIC_START+23,3, 6, 1 },  // "B" - "!"
+  { KEYPAD_ID_BASIC_START+24,3, 7, 1 },  // "N" - "?"
+  { KEYPAD_ID_BASIC_START+25,3, 8, 1 },  // "M" - ","
+};
 
-// Generate the keypad layout
-void XKeyPadCreateKeys_Alpha(gslc_tsGui* pGui, gslc_tsXKeyPad* pXData)
+// Reset the XKeyPad config struct
+// - This must be called before any XKeyPad config update APIs are called
+gslc_tsXKeyPadCfg gslc_ElemXKeyPadCfgInit_Alpha()
 {
-  int16_t nKeyInd;
-  int16_t nRow, nCol;
-
-  // - Create the "special" buttons
-  XKeyPadAddKeyElem(pGui, pXData, KEYPAD_ID_BACKSPACE, false, 1, 6, 1, 2, GSLC_COL_GRAY_LT1, GSLC_COL_GRAY_LT3, true);
-  XKeyPadAddKeyElem(pGui, pXData, KEYPAD_ID_PERIOD, false, 3, 7, 1, 1, GSLC_COL_GRAY_LT1, GSLC_COL_GRAY_LT3, true);
-  XKeyPadAddKeyElem(pGui, pXData, KEYPAD_ID_SPACE, false, 3, 6, 1, 1, GSLC_COL_GRAY_LT1, GSLC_COL_GRAY_LT3, true);
-  XKeyPadAddKeyElem(pGui, pXData, KEYPAD_ID_ESC, false, 2, 6, 1, 2, GSLC_COL_RED, GSLC_COL_RED_LT4, true);
-  XKeyPadAddKeyElem(pGui, pXData, KEYPAD_ID_ENTER, false, 0, 6, 1, 2, GSLC_COL_GREEN, GSLC_COL_GREEN_LT4, true);
-
-  // - Create the "simple" buttons
-  for (int16_t nKeyId = KEYPAD_ID_BASIC_START; nKeyId < (KEYPAD_ID_BASIC_START + XKEYPADALPHA_BTN_BASIC); nKeyId++) {
-    nKeyInd = nKeyId - KEYPAD_ID_BASIC_START;
-    nRow = (nKeyInd / 6) + 1;
-    nCol = nKeyInd % 6;
-    XKeyPadAddKeyElem(pGui, pXData, nKeyId, false, nRow, nCol, 1, 1, GSLC_COL_BLUE_LT1, GSLC_COL_BLUE_LT4, true);
-  }
-
-  // - Create the text field
-  XKeyPadAddKeyElem(pGui, pXData, KEYPAD_ID_TXT, true, 0, 0, 1, 6, GSLC_COL_BLACK, GSLC_COL_BLACK, true);
+  gslc_tsXKeyPadCfg sConfig;
+  sConfig.nButtonSzW    = 25;
+  sConfig.nButtonSzH    = 25;
+  sConfig.bFloatEn      = false; // Unused
+  sConfig.bSignEn       = false; // Unused
+  sConfig.bRoundEn      = false;
+  sConfig.nFontId       = GSLC_FONT_NONE; // Will be overwritten
+  sConfig.pActiveLabels = KEYPAD_ALPHA_LABEL;
+  sConfig.pLabels1      = KEYPAD_ALPHA_LABEL;
+  sConfig.pLabels2      = KEYPAD_NUM_LABEL;
+  sConfig.pKeyPos       = KEYPAD_KEY_POS;
+  sConfig.nSpecialKeys  = XKEYPADALPHA_BTN_SPECIAL;
+  sConfig.nBasicKeys    = XKEYPADALPHA_BTN_BASIC;
+  sConfig.nMaxKeys      = XKEYPADALPHA_ELEM_MAX;
+  sConfig.nMaxCols      = 10;
+  sConfig.nMaxRows      = 4;
+  sConfig.nFrameMargin  = 2;
+  return sConfig;
 }
 
-// Convert between keypad ID and the index into the keypad label array
-int16_t XKeyPadLookup_Alpha(gslc_tsGui* pGui, int16_t nKeyId)
-{
-  int16_t nKeyInd;
-
-  // Basic button
-  if (nKeyId >= KEYPAD_ID_BASIC_START) {
-    nKeyInd = (nKeyId - KEYPAD_ID_BASIC_START) + KEYPAD_LBL_BASIC_START;
-  } else {
-    // Special button
-    switch (nKeyId) {
-    case KEYPAD_ID_PERIOD:
-      nKeyInd = KEYPAD_LBL_PERIOD;
-      break;
-    case KEYPAD_ID_SPACE:
-      nKeyInd = KEYPAD_LBL_SPACE;
-      break;
-    case KEYPAD_ID_BACKSPACE:
-      nKeyInd = KEYPAD_LBL_BACKSPACE;
-      break;
-    case KEYPAD_ID_ESC:
-      nKeyInd = KEYPAD_LBL_ESC;
-      break;
-    case KEYPAD_ID_ENTER:
-      nKeyInd = KEYPAD_LBL_ENTER;
-      break;
-    default:
-      // FIXME: ERROR
-      nKeyInd = -1; // Not expected
-      break;
-    }
-  }
-  return nKeyInd;
-}
-
-// Create the XKeyPad_Alpha compound element
-// - Note that this also revises some of the members of the base XKeyPad struct
+// Create the XKeyPad_Num element
 gslc_tsElemRef* gslc_ElemXKeyPadCreate_Alpha(gslc_tsGui* pGui, int16_t nElemId, int16_t nPage,
   gslc_tsXKeyPad_Alpha* pXData, int16_t nX0, int16_t nY0, int8_t nFontId, gslc_tsXKeyPadCfg* pConfig)
 {
-  gslc_tsXKeyPad* pXDataBase = (gslc_tsXKeyPad*)pXData;
-  pXDataBase->nSubElemMax = XKEYPADALPHA_ELEM_MAX;
-  pXDataBase->psElemRef = pXData->asElemRef;
-  pXDataBase->psElem = pXData->asElem;
 
   // Provide default config if none supplied
   gslc_tsXKeyPadCfg sConfigTmp;
@@ -180,29 +168,9 @@ gslc_tsElemRef* gslc_ElemXKeyPadCreate_Alpha(gslc_tsGui* pGui, int16_t nElemId, 
     sConfigTmp = gslc_ElemXKeyPadCfgInit_Alpha();
     pConfig = &sConfigTmp;
   }
-
-  return gslc_ElemXKeyPadCreateBase(pGui, nElemId, nPage, pXDataBase, nX0, nY0, nFontId, pConfig,
-    &XKeyPadCreateKeys_Alpha,&XKeyPadLookup_Alpha);
+  
+  return gslc_XKeyPadCreateBase(pGui, nElemId, nPage, (void*)pXData, nX0, nY0, nFontId, pConfig);
 }
 
-// Reset the XKeyPad config struct
-// - This must be called before any XKeyPad config update APIs are called
-gslc_tsXKeyPadCfg gslc_ElemXKeyPadCfgInit_Alpha()
-{
-  gslc_tsXKeyPadCfg sConfig;
-  sConfig.nButtonSzW = 25;
-  sConfig.nButtonSzH = 25;
-  sConfig.bFloatEn = false; // Unused
-  sConfig.bSignEn = false; // Unused
-  sConfig.bRoundEn = false;
-  sConfig.nFontId = GSLC_FONT_NONE; // Will be overwritten
-  sConfig.pacKeys = KEYPAD_LABEL_STRINGS;
-  sConfig.nMaxCols = 8;
-  sConfig.nMaxRows = 6;
-  sConfig.nFrameMargin = 2;
-  return sConfig;
-}
-
-#endif // GSLC_FEATURE_COMPOUND
 
 // ============================================================================

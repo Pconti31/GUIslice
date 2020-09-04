@@ -6,7 +6,7 @@
 #include "elem/XKeyPad.h"
 
 // =======================================================================
-// GUIslice library extension: XKeyPad control (alpha entry)
+// GUIslice library extension: XKeyPad control (numeric entry)
 // - Paul Conti, Calvin Hass
 // - https://www.impulseadventure.com/elec/guislice-gui.html
 // - https://github.com/ImpulseAdventure/GUIslice
@@ -14,7 +14,7 @@
 //
 // The MIT License
 //
-// Copyright 2016-2020 Calvin Hass
+// Copyright 2016-2019 Calvin Hass
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -35,33 +35,26 @@
 // THE SOFTWARE.
 //
 // =======================================================================
-/// \file XKeyPad.h
+/// \file XKeyPad_Alpha.h
 
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
-#if (GSLC_FEATURE_COMPOUND)
+
 
 // Define number of buttons & elements
 // - Refer to the definitions in the XKeyPad_*.c file
+#define XKEYPADALPHA_BTN_SPECIAL 5
 #define XKEYPADALPHA_BTN_BASIC 26
-#define XKEYPADALPHA_ELEM_MAX (6 + XKEYPADALPHA_BTN_BASIC)
+#define XKEYPADALPHA_ELEM_MAX (XKEYPADALPHA_BTN_SPECIAL + XKEYPADALPHA_BTN_BASIC)
 
 // ============================================================================
 // Extended Element: KeyPad Character entry
 // - NOTE: The XKeyPad_Alpha extends the XKeyPad base element
 // ============================================================================
 
-typedef struct {
-  // Base XKeyPad struct
-  // - The base type must appear at the top of the derived struct
-  gslc_tsXKeyPad      sKeyPad;                             ///< Base XKeyPad element
-
-  gslc_tsElemRef      asElemRef[XKEYPADALPHA_ELEM_MAX];    ///< Storage for sub-element references
-  gslc_tsElem         asElem[XKEYPADALPHA_ELEM_MAX];       ///< Storage for sub-elements
-} gslc_tsXKeyPad_Alpha;
-
+typedef gslc_tsXKeyPad gslc_tsXKeyPad_Alpha;  // to avoid code changes for existing projects
   ///
   /// Create a KeyPad Element
   ///
@@ -90,8 +83,6 @@ typedef struct {
   gslc_tsXKeyPadCfg gslc_ElemXKeyPadCfgInit_Alpha();
 
 // ============================================================================
-
-#endif // GSLC_FEATURE_COMPOUND
 
 #ifdef __cplusplus
 }

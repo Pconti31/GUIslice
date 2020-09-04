@@ -14,7 +14,7 @@
 //
 // The MIT License
 //
-// Copyright 2016-2020 Calvin Hass
+// Copyright 2016-2019 Calvin Hass
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -35,33 +35,26 @@
 // THE SOFTWARE.
 //
 // =======================================================================
-/// \file XKeyPad.h
+/// \file XKeyPad_Num.h
 
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
-#if (GSLC_FEATURE_COMPOUND)
+
 
 // Define number of buttons & elements
 // - Refer to the definitions in the XKeyPad_*.c file
-#define XKEYPADNUM_BTN_BASIC 10
-#define XKEYPADNUM_ELEM_MAX (6 + XKEYPADNUM_BTN_BASIC)
+#define XKEYPADNUM_BTN_SPECIAL  5
+#define XKEYPADNUM_BTN_BASIC   10
+#define XKEYPADNUM_ELEM_MAX (XKEYPADNUM_BTN_SPECIAL + XKEYPADNUM_BTN_BASIC)
 
 // ============================================================================
 // Extended Element: KeyPad Character entry
-// - NOTE: The XKeyPad_Alpha extends the XKeyPad base element
+// - NOTE: The XKeyPad_Num extends the XKeyPad base element
 // ============================================================================
 
-typedef struct {
-  // Base XKeyPad struct
-  // - The base type must appear at the top of the derived struct
-  gslc_tsXKeyPad      sKeyPad;                             ///< Base XKeyPad element
-
-  gslc_tsElemRef      asElemRef[XKEYPADNUM_ELEM_MAX];    ///< Storage for sub-element references
-  gslc_tsElem         asElem[XKEYPADNUM_ELEM_MAX];       ///< Storage for sub-elements
-} gslc_tsXKeyPad_Num;
-
+typedef gslc_tsXKeyPad gslc_tsXKeyPad_Num;  // to avoid code changes for existing projects
   ///
   /// Create a KeyPad Element
   ///
@@ -90,8 +83,6 @@ typedef struct {
   gslc_tsXKeyPadCfg gslc_ElemXKeyPadCfgInit_Num();
 
 // ============================================================================
-
-#endif // GSLC_FEATURE_COMPOUND
 
 #ifdef __cplusplus
 }
