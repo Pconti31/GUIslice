@@ -132,6 +132,7 @@ extern "C" {
   //#include "../configs/esp-tftespi-default-stmpe610.h"
   //#include "../configs/esp-tftespi-default-xpt2046.h"
   //#include "../configs/esp-tftespi-default-xpt2046_int.h"
+  //#include "../configs/esp-tftespi-elecrow-xpt2026-irq.h"
 
   // Teensy:
   // ------------------------------------------------------

@@ -594,6 +594,79 @@ void gslc_Quit(gslc_tsGui* pGui)
   gslc_GuiDestruct(pGui);
 }
 
+#if defined(XPT2046_IRQ)
+// This routine is responsible for the XT2046_IRQ touch event 
+// It DOES NOT USE the touch state machine it only
+// dispatchs to the touch event handler for the page.
+// INTERRUPTS only give back one touch event so we map to GSLC_TOUCH_UP_IN
+// Paul Conti - August 16, 2023
+void gslc_TrackTouchIRQ(gslc_tsGui* pGui,int16_t nX,int16_t nY,uint16_t nPress)
+{
+  int                 nRelX,nRelY;
+ 
+
+  #ifdef DBG_TOUCH
+  GSLC_DEBUG_PRINT("Trk: (%3d,%3d) P=%3u : gslc_TrackTouchIRQ\n",nX,nY,nPress);
+  #endif
+
+  gslc_teTouch  eTouch = GSLC_TOUCH_UP_IN;
+  
+  gslc_tsEventTouch sEventTouch;
+  sEventTouch.eTouch      = eTouch;
+
+  // Use most recent coordinate from touch driver
+  sEventTouch.nX          = nX;
+  sEventTouch.nY          = nY;
+    
+  void* pvData = (void*)(&sEventTouch);
+  gslc_tsEvent sEvent;
+  
+  // Generate touch page event for any enabled pages in the stack
+  for (unsigned nStack = 0; nStack < GSLC_STACK__MAX; nStack++) {
+    gslc_tsPage* pStackPage = pGui->apPageStack[nStack];
+    if (pStackPage) {
+      // Ensure the page layer is active (receiving touch events)
+      if (pGui->abPageStackActive[nStack]) {
+        sEvent = gslc_EventCreate(pGui, GSLC_EVT_TOUCH, 0, (void*)pStackPage, pvData);
+        gslc_PageEvent(pGui, sEvent);
+        break;
+      }
+    }
+  }
+  void*           pvScope   = sEvent.pvScope;
+  gslc_tsCollect* pCollect  = (gslc_tsCollect*)(pvScope);
+
+  // Determine the element touched, if any
+  int16_t nTrackedIndNew = GSLC_IND_NONE;
+  gslc_tsElemRef* pElemRefTracked = gslc_CollectFindElemFromCoord(pGui,pCollect,nX,nY,&nTrackedIndNew);
+  if (pElemRefTracked == NULL) {
+    #ifdef DBG_TOUCH
+    GSLC_DEBUG_PRINT("Trk: No matching element\n","");
+    #endif
+    return;  // No matches
+  }
+  #ifdef DBG_TOUCH
+  GSLC_DEBUG_PRINT("Trk: Matching element found ID=%d\n",nTrackedIndNew);
+  #endif
+  
+  // Since we are going to use the callback within the element
+  // we need to ensure it is cached in RAM first 
+  // (I have no idea why it would'nt be in ram? PC 2023/08/15)
+  gslc_tsElem* pElemTouched = gslc_GetElemFromRef(pGui,pElemRefTracked);
+
+  // Generate relative coordinates
+  nRelX = nX - pElemTouched->rElem.x;
+  nRelY = nY - pElemTouched->rElem.y;
+
+  // grab the callback function
+  GSLC_CB_TOUCH pfuncXTouch = pElemTouched->pfuncXTouch;
+
+  if (pfuncXTouch != NULL) {
+    // Pass in the relative position from corner of element region
+    (*pfuncXTouch)(pGui,(void*)(pElemRefTracked),eTouch,nRelX,nRelY);
+  }
+}
+#endif // XPT2046_IRQ
 
 // Main polling loop for GUIslice
 void gslc_Update(gslc_tsGui* pGui)
@@ -712,7 +785,11 @@ void gslc_Update(gslc_tsGui* pGui)
         case GSLC_INPUT_TOUCH:
           // Track and handle the touch events
           // - Handle the events on the current page
+          #if defined(XPT2046_IRQ)
+          gslc_TrackTouchIRQ(pGui,nTouchX,nTouchY,nTouchPress);
+          #else
           gslc_TrackTouch(pGui,NULL,nTouchX,nTouchY,nTouchPress);
+          #endif // XPT2046_IRQ
 
           #ifdef DBG_TOUCH
           // Highlight current touch for coordinate debug
@@ -2055,6 +2132,9 @@ int gslc_GetPageCur(gslc_tsGui* pGui)
 
 void gslc_SetStackPage(gslc_tsGui* pGui, uint8_t nStackPos, int16_t nPageId)
 {
+#if defined(DEBUG_LOG)
+  GSLC_DEBUG_PRINT("gslc_SetStackPage: nStackPos=%u nPageId=%d\n",nStackPos, nPageId);
+#endif  
   int16_t nPageSaved = GSLC_PAGE_NONE;
   gslc_tsPage* pPageSaved = pGui->apPageStack[nStackPos];
   if (pPageSaved != NULL) {
@@ -4974,7 +5054,6 @@ void gslc_TrackTouch(gslc_tsGui* pGui,gslc_tsPage* pPage,int16_t nX,int16_t nY,u
     #ifdef DBG_TOUCH
     GSLC_DEBUG_PRINT("Trk: (%3d,%3d) P=%3u : TouchUp\n\n",nX,nY,nPress);
     #endif
-
   } else if ((pGui->nTouchLastX != nX) || (pGui->nTouchLastY != nY)) {
     // We only track movement if touch is "down"
     if (nPress > 0) {
@@ -5000,6 +5079,7 @@ void gslc_TrackTouch(gslc_tsGui* pGui,gslc_tsPage* pPage,int16_t nX,int16_t nY,u
   //       touch was released within an element (causing a button selection)
   //       or outside of it (generally leading to a non-selection).
   //
+
   if (eTouch == GSLC_TOUCH_UP) {
     // Use previous (good) coordinates from touch driver
     sEventTouch.nX          = pGui->nTouchLastX;

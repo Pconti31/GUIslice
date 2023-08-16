@@ -146,6 +146,9 @@ TFT_eSPI m_disp = TFT_eSPI();
 // ------------------------------------------------------------------------
 #elif defined(DRV_TOUCH_XPT2046_PS)
   const char* m_acDrvTouch = "XPT2046_PS(SPI-HW)";
+  #if defined(USE_SPICLASS_ESP32_HSPI)
+  SPIClass hspi(HSPI);  
+  #endif
   #if defined(XPT2046_IRQ)
     // Use SPI, with IRQs
     XPT2046_Touchscreen m_touch(XPT2046_CS, XPT2046_IRQ); // Chip Select pin, IRQ pin
@@ -1644,7 +1647,14 @@ bool gslc_TDrvInitTouch(gslc_tsGui* pGui,const char* acDev) {
     m_touch.begin();
     return true;
   #elif defined(DRV_TOUCH_XPT2046_PS)
-    m_touch.begin();
+    #if defined(XPT2046_IRQ)
+    GSLC_DEBUG2_PRINT("TRACE: TDrvInitTouch() XT2046 using IRQ pin=%d\n",XPT2046_IRQ);
+    #endif
+    #if defined(USE_SPICLASS_ESP32_HSPI)
+      m_touch.begin(hspi);
+    #else
+      m_touch.begin();
+    #endif
     // Since this XPT2046 library supports "touch rotation", and defaults
     // to landscape orientation, rotate to traditional portrait orientation
     // for consistency with other handlers.
@@ -1936,39 +1946,66 @@ bool gslc_TDrvGetTouch(gslc_tsGui* pGui,int16_t* pnX,int16_t* pnY,uint16_t* pnPr
     }
 
   // ----------------------------------------------------------------
-  #elif defined(DRV_TOUCH_XPT2046_PS)
+  //REVISED CODE by PConti31
+#elif defined(DRV_TOUCH_XPT2046_PS)
     uint16_t  nRawX,nRawY; //XPT2046 returns values up to 4095
     uint16_t  nRawPress;   //XPT2046 returns values up to 4095
 
-    TS_Point p = m_touch.getPoint();
+  // tirqTouched() is much faster than touched().  For projects where other SPI chips
+  // or other time sensitive tasks are added to loop(), using tirqTouched() can greatly
+  // reduce the delay added to loop() when the screen has not been touched.
+#if defined(XPT2046_IRQ)
+  if (m_touch.tirqTouched()) {
+    #if defined(DBG_TOUCH)
+    GSLC_DEBUG_PRINT("TRACE: TDrvInitTouch() IRQ triggered\n","");
+    #endif
+    if (m_touch.touched()) {
+    #if defined(DBG_TOUCH)
+    GSLC_DEBUG_PRINT("TRACE: TDrvInitTouch() m_touch.touched() TRUE\n","");
+    #endif
+#endif
+      TS_Point p = m_touch.getPoint();
+      #if defined(DBG_TOUCH) && defined(XPT2046_IRQ)
+      GSLC_DEBUG_PRINT("TRACE: TDrvInitTouch() TS_Point p.x=%d p.y=%d p.z=%d\n",p.x,p.y,p.z);
+      GSLC_DEBUG_PRINT("TRACE: TDrvInitTouch() nTouchCalPressMin=%d nTouchCalPressMax=%d\n",
+       pGui->nTouchCalPressMin,pGui->nTouchCalPressMax);
+      #endif
+      if ((p.z > pGui->nTouchCalPressMin) && (p.z < pGui->nTouchCalPressMax)) {
+        // PaulStoffregen/XPT2046 appears to use a different orientation
+        // than other libraries. Therefore, we will remap it here
+        // to match the default portrait orientation.
+        nRawX = 4095-p.y;
+        nRawY = p.x;
 
-    if ((p.z > pGui->nTouchCalPressMin) && (p.z < pGui->nTouchCalPressMax)) {
-      // PaulStoffregen/XPT2046 appears to use a different orientation
-      // than other libraries. Therefore, we will remap it here
-      // to match the default portrait orientation.
-      nRawX = 4095-p.y;
-      nRawY = p.x;
-
-      nRawPress = p.z;
-      m_nLastRawX = nRawX;
-      m_nLastRawY = nRawY;
-      m_nLastRawPress = nRawPress;
-      m_bLastTouched = true;
-      bValid = true;
-    }
-    else {
-      if (!m_bLastTouched) {
-        // Wasn't touched before; do nothing
-      }
-      else {
-        // Touch release
-        // Indicate old coordinate but with pressure=0
-        m_nLastRawPress = 0;
-        m_bLastTouched = false;
+        nRawPress = p.z;
+        m_nLastRawX = nRawX;
+        m_nLastRawY = nRawY;
+        m_nLastRawPress = nRawPress;
+        m_bLastTouched = true;
         bValid = true;
       }
+      else {
+        if (!m_bLastTouched) {
+          // Wasn't touched before; do nothing
+      #if defined(DBG_TOUCH) && defined(XPT2046_IRQ)
+          GSLC_DEBUG_PRINT("TRACE: TDrvInitTouch() not touched before; do nothing\n","");
+      #endif
+        }
+        else {
+          // Touch release
+          // Indicate old coordinate but with pressure=0
+          m_nLastRawPress = 0;
+          m_bLastTouched = false;
+          bValid = true;
+      #if defined(DBG_TOUCH) && defined(XPT2046_IRQ)
+          GSLC_DEBUG_PRINT("TRACE: TDrvInitTouch() Indicate old coordinate but with pressure=0\n","");
+      #endif
+        }
+      }
+#if defined(XPT2046_IRQ)
     }
-
+  }
+#endif
   // ----------------------------------------------------------------
   #elif defined(DRV_TOUCH_HANDLER)
 
