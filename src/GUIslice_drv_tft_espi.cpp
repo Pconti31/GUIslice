@@ -457,8 +457,21 @@ bool gslc_DrvDrawTxtAlign(gslc_tsGui* pGui,int16_t nX0,int16_t nY0,int16_t nX1,i
   }
   m_disp.setTextDatum(nDatum);
 
+#ifdef SMOOTH_FONT
+  // test for Arabic fonts 
+  if (pFont->eFontRefType  == GSLC_FONTREF_FNAME) {
+    if (pFont->eFontRefMode == GSLC_FONTREF_MODE_1) { 
+      fex.setCursorRTL(nTxtX, nTxtY);
+      fex.drawStringRTL(pStr);
+    } else {
+      m_disp.drawString(pStr,nTxtX,nTxtY);
+    }
+  } else {
+    m_disp.drawString(pStr,nTxtX,nTxtY);
+  }
+#else       
   m_disp.drawString(pStr,nTxtX,nTxtY);
-
+#endif
   // For now, always return true
   return true;
 }
@@ -553,7 +566,7 @@ inline void gslc_DrvDrawPoint_base(int16_t nX, int16_t nY, uint16_t nColRaw)
 
 inline void gslc_DrvDrawLine_base(int16_t nX0,int16_t nY0,int16_t nX1,int16_t nY1,uint16_t nColRaw)
 {
-  m_disp.drawLine(nX0,nY0,nX1,nY1,nColRaw);
+		m_disp.drawLine(nX0,nY0,nX1,nY1,nColRaw);
 }
 
 
